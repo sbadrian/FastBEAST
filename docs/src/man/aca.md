@@ -1,1 +1,1 @@
-# Adaptive Cross Aproximation
+# Adaptive Cross Approximation

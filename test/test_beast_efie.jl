@@ -25,9 +25,11 @@ pts = [point(cos(ϕ)*sin(θ), sin(ϕ)*sin(θ), cos(θ)) for ϕ in Φ for θ in �
 # This is an electric dipole
 # The pre-factor (1/ε) is used to resemble 
 # (9.18) in Jackson's Classical Electrodynamics
-E = (1/ε) * dipolemw3d(location=SVector(0.4,0.2,0), 
-                    orientation=1e-9.*SVector(0.5,0.5,0), 
-                    wavenumber=k)
+E = (1/ε) * dipolemw3d(
+    location=SVector(0.4,0.2,0), 
+    orientation=1e-9.*SVector(0.5,0.5,0), 
+    wavenumber=k
+)
 
 n = BEAST.NormalVector()
 

@@ -29,6 +29,7 @@ struct ACAGlobalMemory{F}
     U::Matrix{F}
     V::Matrix{F}
     used_I::Vector{Bool}
+    updated_I::Vector{Int}
     used_J::Vector{Bool}
 end
 
@@ -36,8 +37,9 @@ function allocate_aca_memory(::Type{F}, maxrows, maxcolumns; maxrank = 40) where
     U = zeros(F, maxrows, maxrank)
     V = zeros(F, maxrank, maxcolumns)
     used_I = zeros(Bool, maxrows)
+    updated_I = zeros(Int, maxrows)
     used_J = zeros(Bool, maxcolumns)
-    return ACAGlobalMemory(U, V, used_I, used_J)
+    return ACAGlobalMemory(U, V, used_I, updated_I, used_J)
 end
 
 maxrank(acamemory::ACAGlobalMemory) = size(acamemory.U, 2)
@@ -54,6 +56,7 @@ function smartmaxlocal(roworcolumn, acausedindices)
             end
         end
     end
+
     return index, maxval
 end
 
@@ -61,6 +64,7 @@ function aca(
     M::LazyMatrix{I, F},
     am::ACAGlobalMemory{F};
     tol=1e-14,
+    isblockstructured=false,
     svdrecompress=true
 ) where {I, F}
 
@@ -79,6 +83,16 @@ function aca(
         M.τ[nextrow:nextrow],
         M.σ[1:size(M,2)]
     )
+    while isapprox(norm(am.V[Ic:Ic, 1:maxcolumns]), 0.0) && nextrow != maxrows
+        i += 1
+        nextrow += 1
+        am.used_I[nextrow] = true
+        @views M.μ(
+            am.V[Ic:Ic, 1:maxcolumns], 
+            M.τ[nextrow:nextrow],
+            M.σ[1:size(M,2)]
+        )
+    end
 
     @views nextcolumn, maxval = smartmaxlocal(
         am.V[Ic:Ic, 1:maxcolumns],
@@ -88,88 +102,132 @@ function aca(
     am.used_J[nextcolumn] = true
 
     dividor = am.V[Ic, nextcolumn]
-    @views am.V[Ic:Ic, 1:maxcolumns] ./= dividor
+    
+    if !isapprox(maximum(dividor), 0)
 
-    @views M.μ(
-        am.U[1:maxrows, Jc:Jc], 
-        M.τ[1:size(M, 1)], 
-        M.σ[nextcolumn:nextcolumn]
-    )
-
-    @views normUVlastupdate = norm(am.U[1:maxrows, 1])*norm(am.V[1, 1:maxcolumns])
-    normUVsqared = normUVlastupdate^2
-   
-    while normUVlastupdate > sqrt(normUVsqared)*tol && 
-        i <= length(M.τ)-1 &&
-        i <= length(M.σ)-1 &&
-        Jc < maxrank(am)
-
-        i += 1
-
-        @views nextrow, maxval = smartmaxlocal(
-            am.U[1:maxrows,Jc],
-            am.used_I[1:maxrows]
-        )
-
-        am.used_I[nextrow] = true
-
-        Ic += 1
+        @views am.V[Ic:Ic, 1:maxcolumns] ./= dividor
         @views M.μ(
-            am.V[Ic:Ic, 1:maxcolumns],
-            M.τ[nextrow:nextrow],
-            M.σ[1:size(M, 2)]
+            am.U[1:maxrows, Jc:Jc], 
+            M.τ[1:size(M, 1)], 
+            M.σ[nextcolumn:nextcolumn]
         )
 
-        @assert Jc == (Ic - 1)
-        for k = 1:Jc
-            for kk=1:maxcolumns
-                am.V[Ic, kk] -= am.U[nextrow, k]*am.V[k, kk]
-            end
-        end
-
-        @views nextcolumn, maxval = smartmaxlocal(
-            am.V[Ic, 1:maxcolumns],
-            am.used_J[1:maxcolumns]
-        )
-
-        if (isapprox(am.V[Ic, nextcolumn],0.0))
-            normUVlastupdate = 0.0
-            am.V[Ic:Ic, 1:maxcolumns] .= 0.0
-            Ic -= 1
-            println("Matrix seems to have exact rank: ", Ic)
-        else
-            dividor = am.V[Ic, nextcolumn]
-            @views am.V[Ic:Ic, 1:maxcolumns] ./= dividor
-
-            am.used_J[nextcolumn] = true
-
-            Jc += 1
-            @views M.μ(
-                am.U[1:maxrows, Jc:Jc], 
-                M.τ[1:size(M, 1)],
-                M.σ[nextcolumn:nextcolumn]
-            )
-
-            @assert Jc == Ic
-            for k = 1:(Jc-1)
-                for kk = 1:maxrows
-                    am.U[kk, Jc] -= am.U[kk, k]*am.V[k, nextcolumn]
+        @views normUVlastupdate = norm(am.U[1:maxrows, 1])*norm(am.V[1, 1:maxcolumns])
+        normUVsqared = normUVlastupdate^2
+        while i <= length(M.τ)-1 &&
+            i <= length(M.σ)-1 &&
+            Jc < maxrank(am)
+            
+            if isblockstructured
+                for k = 1:length(M.τ)
+                    if !isapprox(0, am.U[k,Ic]; atol=10^-16)
+                        am.updated_I[k] += 1;
+                    end
                 end
             end
 
-            @views normUVlastupdate = norm(am.U[1:maxrows,Jc])*norm(am.V[Ic,1:maxcolumns])
+            if normUVlastupdate < sqrt(normUVsqared)*tol
+                if isblockstructured
+                    missingrow = 0
+                    for k = 1:length(M.τ)
+                        if am.updated_I[k] == 0
+                            missingrow = k
+                            break
+                        end
+                    end
+                    if missingrow != 0
+                        i += 1
+                        maxval = am.U[missingrow,Jc]
+                        nextrow = missingrow
+                    else
+                        break
+                    end
+                else
+                    break
+                end
+            else
+                i += 1
+                @views nextrow, maxval = smartmaxlocal(
+                    am.U[1:maxrows,Jc],
+                    am.used_I[1:maxrows]
+                )
+            end
+    
+            am.used_I[nextrow] = true
 
-            normUVsqared += normUVlastupdate^2
-            for j = 1:(Jc-1)
-                @views normUVsqared += 2*abs(dot(am.U[1:maxrows,Jc], am.U[1:maxrows,j])*dot(am.V[Ic,1:maxcolumns], am.V[j,1:maxcolumns]))
+            Ic += 1
+            @views M.μ(
+                am.V[Ic:Ic, 1:maxcolumns],
+                M.τ[nextrow:nextrow],
+                M.σ[1:size(M, 2)]
+            )
+
+            while isapprox(norm(am.V[Ic:Ic, 1:maxcolumns]), 0.0) && nextrow != maxrows
+                nextrow += 1
+                i+=1
+                am.used_I[nextrow] = true
+                @views M.μ(
+                    am.V[Ic:Ic, 1:maxcolumns], 
+                    M.τ[nextrow:nextrow],
+                    M.σ[1:size(M, 2)]
+                )
+            end
+
+            @assert Jc == (Ic - 1)
+            for k = 1:Jc
+                for kk=1:maxcolumns
+                    am.V[Ic, kk] -= am.U[nextrow, k]*am.V[k, kk]
+                end
+            end
+
+            @views nextcolumn, maxval = smartmaxlocal(
+                am.V[Ic, 1:maxcolumns],
+                am.used_J[1:maxcolumns]
+            )
+
+            if (isapprox(am.V[Ic, nextcolumn], 0.0))
+                normUVlastupdate = 0.0
+                am.V[Ic:Ic, 1:maxcolumns] .= 0.0
+                Ic -= 1
+                println("Matrix seems to have exact rank: ", Ic)
+            else
+                dividor = am.V[Ic, nextcolumn]
+                @views am.V[Ic:Ic, 1:maxcolumns] ./= dividor
+
+                am.used_J[nextcolumn] = true
+
+                Jc += 1
+                @views M.μ(
+                    am.U[1:maxrows, Jc:Jc], 
+                    M.τ[1:size(M, 1)],
+                    M.σ[nextcolumn:nextcolumn]
+                )
+
+                @assert Jc == Ic
+                for k = 1:(Jc-1)
+                    for kk = 1:maxrows
+                        am.U[kk, Jc] -= am.U[kk, k]*am.V[k, nextcolumn]
+                    end
+                end
+
+                @views normUVlastupdate = norm(am.U[1:maxrows,Jc])*norm(am.V[Ic,1:maxcolumns])
+
+                normUVsqared += normUVlastupdate^2
+                for j = 1:(Jc-1)
+                    @views normUVsqared += 2*abs(dot(
+                        am.U[1:maxrows,Jc],
+                        am.U[1:maxrows,j])*dot(am.V[Ic,1:maxcolumns],
+                        am.V[j,1:maxcolumns]
+                    ))
+                end
             end
         end
-    end
 
-    if Jc == maxrank(am)
-        println("WARNING: aborted ACA after maximum allowed rank")
+        if Jc == maxrank(am)
+            println("WARNING: aborted ACA after maximum allowed rank")
+        end
     end
-
+    
     if svdrecompress && Jc > 1
         @views Q,R = qr(am.U[1:maxrows,1:Jc])
         @views U,s,V = svd(R*am.V[1:Ic,1:maxcolumns])
@@ -204,9 +262,10 @@ function aca(
 end
 
 function aca(
-    M::LazyMatrix{I, F},
+    M::LazyMatrix{I, F};
     tol=1e-14,
     maxrank=40,
+    isblockstructured=false,
     svdrecompress=true
 ) where {I, F}
 
@@ -214,6 +273,7 @@ function aca(
         M,
         allocate_aca_memory(F, size(M, 1), size(M, 2); maxrank=maxrank),
         tol=tol,
+        isblockstructured=isblockstructured,
         svdrecompress=svdrecompress
     )
 end

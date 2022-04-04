@@ -12,6 +12,7 @@ function hassemble(
     threading=:single,
     quadstrat=BEAST.defaultquadstrat(operator, test_functions, trial_functions),
     verbose=false,
+    isblockstructured=false,
     svdrecompress=false
 )
 
@@ -50,6 +51,7 @@ function hassemble(
         threading=threading,
         farmatrixassembler=farassembler,
         verbose=verbose,
+        isblockstructured=isblockstructured,
         svdrecompress=svdrecompress
     )
     return hmat

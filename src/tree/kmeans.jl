@@ -89,7 +89,7 @@ end
 """
     create_tree(points::Array{SVector{D, T}, 1}; treeoptions)
 
-Creates an algebraic tree for an givn set of datapoints. The returned 
+Creates an algebraic tree for an given set of datapoints. The returned 
 datastructure is the foundation for the algorithms in this package. 
 
 # Arguments
@@ -97,7 +97,7 @@ datastructure is the foundation for the algorithms in this package.
     [SVector](https://juliaarrays.github.io/StaticArrays.jl/stable/pages/api/#SVector-1). 
     Each 
     [SVector](https://juliaarrays.github.io/StaticArrays.jl/stable/pages/api/#SVector-1)
-    contains in general two or three float values, which discribe the position 
+    contains in general two or three float values, which describe the position 
     in the space.
 
 # Keywords
@@ -253,7 +253,7 @@ end
 """
     iscompressable(sourcenode::AbstractNode, testnode::AbstractNode)
 
-Determins whether two nodes of a tree are comressable. The criteria differs 
+Determines whether two nodes of a tree are comressable. The criteria differs 
 between the [Box Tree](@ref) and the [K-Means Clustering Tree](@ref).
 For the [K-Means Clustering Tree](@ref) two nodes can be compressed, if the distance 
 between the centers of two clusters is greater than the sum of their radius 

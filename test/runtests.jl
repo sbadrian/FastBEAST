@@ -10,4 +10,5 @@ include("test_common.jl")
     include("test_hmatrix.jl")
     include("test_beast.jl")
     include("test_beast_efie.jl")
+    include("test_beast_mfie.jl")
 end

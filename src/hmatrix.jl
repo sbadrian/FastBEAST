@@ -191,6 +191,7 @@ function HMatrix(
     threading=:single,
     farmatrixassembler=matrixassembler,
     verbose=false,
+    isblockstructured=false,
     svdrecompress=false
 ) where {I, K, T <: AbstractNode} #{I, K, F, N <: NodeData{I, F}, T <: AbstractNode{I, F, N}}
     
@@ -295,6 +296,7 @@ function HMatrix(
                     compressor=compressor,
                     tol=tol,
                     maxrank=maxrank,
+                    isblockstructured=isblockstructured,
                     svdrecompress=svdrecompress
                 )
             )
@@ -319,6 +321,7 @@ function HMatrix(
                     compressor=compressor,
                     tol=tol,
                     maxrank=maxrank,
+                    isblockstructured=isblockstructured,
                     svdrecompress=svdrecompress
                 )
             )
@@ -455,6 +458,7 @@ function getcompressedmatrix(
     tol=1e-4,
     maxrank=100,
     compressor=:aca,
+    isblockstructured=false,
     svdrecompress=true,
 ) where {I, K}
 
@@ -464,6 +468,7 @@ function getcompressedmatrix(
             lm,
             am;
             tol=tol,
+            isblockstructured=isblockstructured,
             svdrecompress=svdrecompress
         )
 
